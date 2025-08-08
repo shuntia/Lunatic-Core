@@ -1,25 +1,15 @@
-use std::fmt::Display;
+use std::sync::LazyLock;
+
+use semver::Version;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
-pub struct Version {
-    pub full: &'static str,
-    pub major: u32,
-    pub minor: u32,
-    pub patch: u32,
-    pub pre: Option<&'static str>,
+pub fn get_ver() -> &'static Version {
+    &VERSION
 }
 
-impl Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.full)
-    }
+fn init_ver() -> Version {
+    lenient_semver::parse(VERSION_FULL).expect("Expected a valid version at compile time.")
 }
 
-pub const VERSION: Version = Version {
-    full: VERSION_FULL,
-    major: VERSION_MAJOR,
-    minor: VERSION_MINOR,
-    patch: VERSION_PATCH,
-    pre: VERSION_PRE,
-};
+pub static VERSION: LazyLock<Version> = LazyLock::new(init_ver);

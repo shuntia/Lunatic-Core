@@ -69,10 +69,6 @@ impl MailBox {
                 id: envelope.destination,
             })?
             .receive(envelope)
-            .await
-            .map_err(|send_error| LunaticError::PluginFailedMessage {
-                envelope: send_error.0,
-            })
     }
     pub fn resolve(&self, id: &str) -> Result<u32> {
         match self.id.load().get(id) {

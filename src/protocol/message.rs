@@ -1,5 +1,6 @@
 use core::alloc;
 use std::alloc::Layout;
+use std::fmt::Display;
 use std::mem::ManuallyDrop;
 use std::{alloc::alloc, ptr::null_mut};
 use std::{
@@ -22,16 +23,23 @@ use tracing::*;
 ///
 /// The source and destination is the bus address for the sender and receiver accordingly.
 ///
-/// require_ack is if the sender requires an ACK. This may be used to check if a task has started.
-///
 /// message is the actual content that this envelope carries.
 #[derive(Debug, Clone)]
 pub struct Envelope {
     pub id: u64,
     pub source: u32,
     pub destination: u32,
-    pub require_ack: bool,
     pub message: Message,
+}
+
+impl Display for Envelope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "id: {}\nfrom: {} to: {}\n---message---\n{}",
+            self.id, self.source, self.destination, self.message
+        )
+    }
 }
 
 impl Envelope {
@@ -40,7 +48,6 @@ impl Envelope {
             id: crate::utils::id::get_next(),
             source,
             destination,
-            require_ack,
             message,
         }
     }
@@ -49,7 +56,6 @@ impl Envelope {
             id: self.id,
             source: self.source,
             destination: self.destination,
-            require_ack: self.require_ack,
             message: Message {
                 opcode: self.message.opcode,
                 data: DataEnum::None,
@@ -67,7 +73,6 @@ pub struct CEnvelope {
     id: u64,
     pub source: u32,
     pub destination: u32,
-    pub require_ack: bool,
     pub message: CMessage,
 }
 
@@ -77,7 +82,6 @@ impl From<CEnvelope> for Envelope {
             id: value.id,
             source: value.source,
             destination: value.destination,
-            require_ack: value.require_ack,
             message: value.message.into(),
         }
     }
@@ -93,6 +97,12 @@ impl From<CEnvelope> for Envelope {
 pub struct Message {
     pub opcode: u32,
     pub data: DataEnum,
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Op code: {}\ncontent:{}", self.opcode, self.data)
+    }
 }
 
 #[repr(C)]
@@ -245,6 +255,23 @@ pub enum DataEnum {
     FfiPeek(FFIPeek),
 }
 
+impl Display for DataEnum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::None => "None".into(),
+                Self::Code(n) => n.to_string(),
+                Self::Arc(_) => "Unknown arc".into(),
+                Self::Bytes(bytes) => base64::encode(bytes),
+                Self::FfiData(data) => base64::encode(unsafe { data.extract_slice() }),
+                Self::FfiPeek(data) => base64::encode(unsafe { data.extract_slice() }),
+            }
+        )
+    }
+}
+
 impl From<&FFIPeek> for Vec<u8> {
     fn from(value: &FFIPeek) -> Self {
         unsafe { value.extract_slice().to_vec() }
@@ -316,29 +343,37 @@ impl Drop for FFIData {
 }
 
 impl FFIData {
-    pub unsafe fn force_cast<T>(self) -> Option<*mut T> {
-        if self.ptr.is_null() {
-            return None;
-        }
-        if self.len != size_of::<T>() {
-            return None;
-        }
-        if self.ptr as usize % align_of::<T>() != 0 {
-            return None;
-        }
-        Some(self.ptr as *mut T)
+    /// Obtain a slice of the target bytes.
+    pub unsafe fn extract_slice(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
-    pub unsafe fn force_box<T>(self) -> Option<BoxedFFI<T>> {
-        if self.ptr.is_null() {
-            return None;
-        }
-        if self.len != size_of::<T>() {
-            return None;
-        }
-        unsafe {
-            if self.ptr as usize % align_of::<T>() != 0 {
+    pub unsafe fn force_cast<T>(self) -> Option<*mut T> {
+        #[cfg(not(debug_assertions))]
+        {
+            if self.ptr.is_null() {
                 return None;
             }
+            if self.len != size_of::<T>() {
+                return None;
+            }
+        }
+        if self.ptr.is_aligned() {
+            return None;
+        }
+        Some(self.ptr.cast())
+    }
+    pub unsafe fn force_box<T>(self) -> Option<BoxedFFI<T>> {
+        #[cfg(not(debug_assertions))]
+        {
+            if self.ptr.is_null() {
+                return None;
+            }
+            if self.len != size_of::<T>() {
+                return None;
+            }
+        }
+        if self.ptr.is_aligned() {
+            return None;
         }
         unsafe {
             Some(BoxedFFI {

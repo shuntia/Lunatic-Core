@@ -18,9 +18,7 @@ pub enum Basic {
     /// Call to initialize plugin
     INIT = 1,
     /// Reset plugin
-    RESET = 3,
-    /// Tick frame or event
-    TICK = 2,
+    RESET = 2,
 }
 
 /// System call to kernel.

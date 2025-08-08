@@ -1,13 +1,12 @@
 use std::{ffi::c_char, pin::Pin};
 
 use crate::{
-    consts::{self, VERSION},
     mailbox::{resolve_global, resolve_global_c, send_global, send_global_c},
     prelude::*,
 };
 
 #[repr(C)]
-pub struct HostCApiV1 {
+pub struct HostCApiVUnstable {
     /// API Version.
     pub version: u32,
     /// Log contents.
@@ -18,10 +17,10 @@ pub struct HostCApiV1 {
     pub resolve: extern "C" fn(*const c_char) -> u32,
 }
 
-impl HostCApiV1 {
+impl HostCApiVUnstable {
     pub fn new() -> Self {
         Self {
-            version: 1,
+            version: 0,
             log: crate::utils::tracing::log_c,
             sender: send_global_c,
             resolve: resolve_global_c,
@@ -29,12 +28,12 @@ impl HostCApiV1 {
     }
 }
 
-pub struct HostApiV1 {
+pub struct HostApiVUnstable {
     /// API Version.
     pub version: u32,
 }
 
-impl HostApiV1 {
+impl HostApiVUnstable {
     fn resolve(query: &str) -> Result<u32> {
         resolve_global(query)
     }
@@ -43,8 +42,17 @@ impl HostApiV1 {
     }
 }
 
-impl HostApiV1 {
+impl HostApiVUnstable {
     pub fn new() -> Self {
-        Self { version: 1 }
+        Self { version: 0 }
     }
+}
+
+pub enum UnstableApi {
+    Rust(HostApiVUnstable),
+    C(HostCApiVUnstable),
+}
+
+pub enum HostApi {
+    Unstable(UnstableApi),
 }

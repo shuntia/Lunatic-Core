@@ -1,3 +1,4 @@
+use crossbeam::channel::SendError;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -37,6 +38,14 @@ pub enum LunaticError {
     /// Out of memory. Self-explanatory.
     #[error("Out of memory")]
     OutOfMemory,
+
+    /// General I/O error
+    #[error("Tokio Filesystem Error: {0}")]
+    TokioIO(#[from] tokio::io::Error),
+
+    /// Serde Error
+    #[error("Failed to serialize/deserialize json: {0}")]
+    Serde(#[from] serde_json::Error),
 
     /// Command timed out.
     #[error("Timeout after {duration_ms}ms")]
@@ -141,9 +150,17 @@ pub enum LunaticError {
     #[error("Render timeout during: {stage}")]
     RenderTimeout { stage: &'static str },
 
-    // Plugin loader/runtime issues
-    #[error("Could not send message to plugin.")]
+    /// Manifest issue where manifest is valid json but invalid format
+    #[error("Invalid Manifest: {reason}")]
+    InvalidManifest { reason: String },
+
+    /// Plugin loader/runtime issues
+    #[error("Could not send message to plugin: {envelope}")]
     PluginFailedMessage { envelope: Envelope },
+
+    /// Plugin sender refused to send.
+    #[error("Failed to send envelope: {0}")]
+    PluginFailedSend(#[from] SendError<Envelope>),
 
     /// Plugin was not loaded?
     #[error("Could not find plugin with id: {id}")]
@@ -157,9 +174,6 @@ pub enum LunaticError {
 
     #[error("Failed to unload plugin: {id}")]
     PluginUnloadFailed { id: u32 },
-
-    #[error("Invalid plugin file: {path:?}")]
-    PluginInvalid { path: PathBuf },
 
     #[error("Plugin incompatible: required version {required_version}, found {found_version}")]
     PluginIncompatible {
